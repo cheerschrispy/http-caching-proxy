@@ -145,7 +145,7 @@ void proxy_server::get_request(cache_list &cache) {
       close(client_connection_fd);
       return;
     }
-    //  cout << request_in << endl;
+    //    cout << request_in << endl;
     request_parser RP(header);
     RP.parser();
     request_line = RP.print_request_line();
@@ -323,75 +323,82 @@ void proxy_server::method_connect() {
 }
 
 void proxy_server::pass_information() {
-  int status;
-  char buffer[65535];
-  memset(buffer, 0, strlen(buffer));
-  fd_set readfds;
-  int max_fd = -1;
-  while (1) {
-    max_fd =
-        (remote_fd > client_connection_fd) ? remote_fd : client_connection_fd;
-    FD_ZERO(&readfds);
-    FD_SET(remote_fd, &readfds);
-    FD_SET(client_connection_fd, &readfds);
-    status = select(max_fd + 1, &readfds, NULL, NULL, NULL);
-    if (status <= 0) {
-      proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-      proxylog << ID << ": ERROR select()" << endl;
-      proxylog.close();
-      break;
-    }
+  try {
+    int status;
+    char buffer[65535];
     memset(buffer, 0, strlen(buffer));
-    if (FD_ISSET(remote_fd, &readfds)) {
-      status = recv(remote_fd, buffer, sizeof(buffer), 0);
-      if (status < 0) {
+    fd_set readfds;
+    int max_fd = -1;
+    while (1) {
+      max_fd =
+          (remote_fd > client_connection_fd) ? remote_fd : client_connection_fd;
+      FD_ZERO(&readfds);
+      FD_SET(remote_fd, &readfds);
+      FD_SET(client_connection_fd, &readfds);
+      status = select(max_fd + 1, &readfds, NULL, NULL, NULL);
+      if (status <= 0) {
         proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-        proxylog << ID << ": ERROR Receive from remote failure" << endl;
+        proxylog << ID << ": ERROR select()" << endl;
         proxylog.close();
         break;
-      } else if (status == 0) {
-        close(remote_fd);
-        proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-        proxylog << ID << ": Tunnel closed" << endl;
-        proxylog.close();
-        return;
-      } else {
-        status = send(client_connection_fd, buffer, status, 0);
-        if (status == -1) {
+      }
+      memset(buffer, 0, strlen(buffer));
+      if (FD_ISSET(remote_fd, &readfds)) {
+        status = recv(remote_fd, buffer, sizeof(buffer), 0);
+        if (status < 0) {
           proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-          proxylog << ID << ": ERROR Send to browser failure" << endl;
+          proxylog << ID << ": ERROR Receive from remote failure" << endl;
           proxylog.close();
           break;
+        } else if (status == 0) {
+          close(remote_fd);
+          proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+          proxylog << ID << ": Tunnel closed" << endl;
+          proxylog.close();
+          return;
+        } else {
+          status = send(client_connection_fd, buffer, status, 0);
+          if (status == -1) {
+            proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+            proxylog << ID << ": ERROR Send to browser failure" << endl;
+            proxylog.close();
+            break;
+          }
         }
-      }
-    } else if (FD_ISSET(client_connection_fd, &readfds)) {
+      } else if (FD_ISSET(client_connection_fd, &readfds)) {
 
-      status = recv(client_connection_fd, buffer, sizeof(buffer), 0);
-      if (status < 0) {
-        proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-        proxylog << ID << ": ERROR Receive from browser failure" << endl;
-        proxylog.close();
-        break;
-      } else if (status == 0) {
-        close(remote_fd);
-        proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-        proxylog << ID << ": Tunnel closed" << endl;
-        proxylog.close();
-        return;
-      } else {
-        status = send(remote_fd, buffer, status, 0);
-        if (status == -1) {
+        status = recv(client_connection_fd, buffer, sizeof(buffer), 0);
+        if (status < 0) {
           proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-          proxylog << ID << ": ERROR Send to remote server failure" << endl;
+          proxylog << ID << ": ERROR Receive from browser failure" << endl;
           proxylog.close();
           break;
+        } else if (status == 0) {
+          close(remote_fd);
+          proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+          proxylog << ID << ": Tunnel closed" << endl;
+          proxylog.close();
+          return;
+        } else {
+          status = send(remote_fd, buffer, status, 0);
+          if (status == -1) {
+            proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+            proxylog << ID << ": ERROR Send to remote server failure" << endl;
+            proxylog.close();
+            break;
+          }
         }
       }
-    }
-  } // while loop
-  proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
-  proxylog << ID << ": Tunnel closed" << endl;
-  proxylog.close();
+    } // while loop
+    proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+    proxylog << ID << ": Tunnel closed" << endl;
+    proxylog.close();
+  } catch (std::exception &e) {
+    cerr << "Pass information failure  " << e.what() << endl;
+    close(remote_fd);
+    return;
+  }
+
   close(remote_fd);
   return;
 }
@@ -509,6 +516,45 @@ void proxy_server::get_response_from_remote(cache_list &cache) {
     }
     response_content_length = RSP.get_content_length();
     if (response_content_length + headerlen <= 2000 && total <= 2000) {
+      if (RSP.get_cache_control() != "") {
+        proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+        proxylog << ID << ": NOTE " << RSP.get_cache_control() << endl;
+        proxylog.close();
+      }
+      if (RSP.get_e_tag() != "") {
+        proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+        proxylog << ID << ": NOTE " << RSP.get_e_tag() << endl;
+        proxylog.close();
+      }
+      if ((RSP.get_cache_control()).find("no-cache") == string::npos &&
+          (RSP.get_cache_control()).find("no-store") == string::npos &&
+          RSP.get_status() == 1) {
+        if ((RSP.get_cache_control()).find("must-revalidate") == string::npos) {
+
+          response_block *RSB = new response_block(
+              *newbuffer, status_line, RSP.get_status_code(), headerlen,
+              response_content_length, total, ID, false, RSP.get_age(),
+              RSP.get_date(), RSP.get_last_modified(), RSP.get_e_tag());
+
+          cache.add_response_to_cache(request_line, RSB, RSP.get_expire_info());
+
+        } else {
+
+          response_block *RSB = new response_block(
+              *newbuffer, status_line, RSP.get_status_code(), headerlen,
+              response_content_length, total, ID, true, RSP.get_age(),
+              RSP.get_date(), RSP.get_last_modified(), RSP.get_e_tag());
+          cache.add_response_to_cache(request_line, RSB, RSP.get_expire_info());
+        }
+
+      } else {
+        proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+        proxylog << ID << ": not cacheable because the server responsed  "
+                 << RSP.get_status_line() << " " << RSP.get_cache_control()
+                 << endl;
+        proxylog.close();
+      }
+
       const char *sp = newbuffer->data();
       send(client_connection_fd, sp, total, 0);
       free(newbuffer);
@@ -534,6 +580,7 @@ void proxy_server::get_response_from_remote(cache_list &cache) {
       if (total == response_content_length + headerlen)
         break;
     }
+    //    cout << RSP.get_cache_control() << endl;
     if (RSP.get_cache_control() != "") {
       proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
       proxylog << ID << ": NOTE " << RSP.get_cache_control() << endl;
@@ -665,10 +712,12 @@ void proxy_server::get_response_from_validation(cache_block *origin,
       return;
     }
     vector<char> responsetosend(request_in.begin(), request_in.end() - 4);
+
     string tmp0 = origin->value->etag + "\r\n";
     vector<char> etagtosend(tmp0.begin(), tmp0.end());
     string tmp1 = "If-Modified-Since: ";
     string tmp2 = "\r\n\r\n\r\n";
+
     string tmp3 = tmp1 + origin->value->lastmodified + tmp2;
 
     vector<char> lastmoditosend(tmp3.begin(), tmp3.end());
@@ -749,6 +798,49 @@ void proxy_server::get_response_from_validation(cache_block *origin,
       }
       response_content_length = RSP.get_content_length();
       if (response_content_length + headerlen <= 2000 && total <= 2000) {
+        if (RSP.get_cache_control() != "") {
+          proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+          proxylog << ID << ": NOTE " << RSP.get_cache_control() << endl;
+          proxylog.close();
+        }
+        if (RSP.get_e_tag() != "") {
+          proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+          proxylog << ID << ": NOTE " << RSP.get_e_tag() << endl;
+          proxylog.close();
+        }
+        if ((RSP.get_cache_control()).find("no-cache") == string::npos &&
+            (RSP.get_cache_control()).find("no-store") == string::npos &&
+            RSP.get_status() == 1) {
+          if ((RSP.get_cache_control()).find("must-revalidate") ==
+              string::npos) {
+
+            response_block *RSB = new response_block(
+                *newbuffer, status_line, RSP.get_status_code(), headerlen,
+                response_content_length, total, ID, false, RSP.get_age(),
+                RSP.get_date(), RSP.get_last_modified(), RSP.get_e_tag());
+
+            cache.add_response_to_cache(request_line, RSB,
+                                        RSP.get_expire_info());
+
+          } else {
+
+            response_block *RSB = new response_block(
+                *newbuffer, status_line, RSP.get_status_code(), headerlen,
+                response_content_length, total, ID, true, RSP.get_age(),
+                RSP.get_date(), RSP.get_last_modified(), RSP.get_e_tag());
+
+            cache.add_response_to_cache(request_line, RSB,
+                                        RSP.get_expire_info());
+          }
+
+        } else {
+          proxylog.open(LOG, std::ofstream::out | std::ofstream::app);
+          proxylog << ID << ": not cacheable because the server responsed  "
+                   << RSP.get_status_line() << " " << RSP.get_cache_control()
+                   << endl;
+          proxylog.close();
+        }
+
         const char *sp = newbuffer->data();
         send(client_connection_fd, sp, total, 0);
         free(newbuffer);

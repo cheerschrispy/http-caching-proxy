@@ -30,6 +30,12 @@ https://www.youtube.com/
 
 2. Test the cache
 
+Run command:
+$ echo -ne "GET  /awesome.txt HTTP/1.1\r\nHost: rabihyounes.com\r\n\Cache-Control:max-age=10\r\n\r\n" | nc localhost 12345
+You can see the picture we GET from this website and you can see "not in cache" and expire time in the proxy_log.
+If run the command again, you can see "in cache, valid" in the proxy_log.
+
+
 Refresh the http://www.rabihyounes.com/, you will find it take shorter time to load
 This website. If you check the proxy.log, you will find the cache record.
 
